@@ -72,7 +72,13 @@ std::string FileData::getBaseDir(const std::string& filepath){
     if (found == std::string::npos)
         return "";
 
-    return filepath.substr(0, found);
+    std::string baseDir = filepath.substr(0, found);
+
+    if (!baseDir.empty() && baseDir.back() != '/' && baseDir.back() != '\\') {
+        baseDir += System::instance().getDirSeparator();
+    }
+
+    return baseDir;
 }
 
 std::string FileData::simplifyPath(const std::string& path) {
