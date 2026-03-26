@@ -1764,10 +1764,15 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
         }
     }
 
-    // getting mesh transform based on GLTF scene root node
+    // Only apply the GLTF root transform when the entity still has the default transform.
     Matrix4 matrix = getGLTFMeshGlobalMatrix(meshNode, model, nodesParent);
-    matrix.decompose(transform.position, transform.scale, transform.rotation);
-    transform.needUpdate = true;
+    bool hasDefaultTransform = (transform.position == Vector3::ZERO)
+        && (transform.rotation == Quaternion::IDENTITY)
+        && (transform.scale == Vector3::UNIT_SCALE);
+    if (hasDefaultTransform) {
+        matrix.decompose(transform.position, transform.scale, transform.rotation);
+        transform.needUpdate = true;
+    }
 
     mesh.cullingMode = CullingMode::BACK;
     if (matrix.determinant() < 0.0){
