@@ -98,12 +98,16 @@ namespace Supernova{
 		void rotateTracksUpdate(KeyframeTracksComponent& keyframe, RotateTracksComponent& rotatetracks, Transform& transform);
 		void morphTracksUpdate(KeyframeTracksComponent& keyframe, MorphTracksComponent& morpthtracks, MeshComponent& mesh);
 
+		void processRunningAction(double dt, Entity entity, ActionComponent& action);
+
 	public:
 		ActionSystem(Scene* scene);
 
 		void actionStart(Entity entity);
 		void actionStop(Entity entity);
 		void actionPause(Entity entity);
+
+		void updateAnimationPreview(double dt, Entity entity);
 	
 		void load() override;
 		void draw() override;

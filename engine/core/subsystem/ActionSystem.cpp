@@ -9,6 +9,9 @@
 #include "util/Angle.h"
 #include "subsystem/MeshSystem.h"
 
+#include <functional>
+#include <unordered_set>
+
 using namespace Supernova;
 
 
@@ -959,6 +962,210 @@ void ActionSystem::actionStateChange(Entity entity, ActionComponent& action){
     }
 }
 
+void ActionSystem::processRunningAction(double dt, Entity entity, ActionComponent& action){
+    Signature signature = scene->getSignature(entity);
+    Signature targetSignature;
+    if (action.target != NULL_ENTITY){
+        targetSignature = scene->getSignature(action.target);
+    }
+
+    //Sprite animation
+    if (signature.test(scene->getComponentId<SpriteAnimationComponent>())){
+        SpriteAnimationComponent& spriteanim = scene->getComponent<SpriteAnimationComponent>(entity);
+        if (targetSignature.test(scene->getComponentId<SpriteComponent>()) && targetSignature.test(scene->getComponentId<MeshComponent>())){
+            SpriteComponent& sprite = scene->getComponent<SpriteComponent>(action.target);
+            MeshComponent& mesh = scene->getComponent<MeshComponent>(action.target);
+
+            spriteActionUpdate(dt, entity, action, mesh, sprite, spriteanim);
+            if (action.state != ActionState::Running) return;
+        }
+    }
+
+    //Particles
+    if (signature.test(scene->getComponentId<ParticlesComponent>())){
+        ParticlesComponent& particles = scene->getComponent<ParticlesComponent>(entity);
+
+        if (targetSignature.test(scene->getComponentId<InstancedMeshComponent>())){
+            InstancedMeshComponent& instmesh = scene->getComponent<InstancedMeshComponent>(action.target);
+
+            particlesActionUpdate(dt, entity, action.target, action, particles, instmesh);
+            if (action.state != ActionState::Running) return;
+        }
+        if (targetSignature.test(scene->getComponentId<PointsComponent>())){
+            PointsComponent& points = scene->getComponent<PointsComponent>(action.target);
+
+            particlesActionUpdate(dt, entity, action.target, action, particles, points);
+            if (action.state != ActionState::Running) return;
+        }
+    }
+
+    //keyframe animation
+    if (signature.test(scene->getComponentId<KeyframeTracksComponent>())){
+        KeyframeTracksComponent& keyframe = scene->getComponent<KeyframeTracksComponent>(entity);
+
+        keyframeUpdate(dt, action, keyframe);
+        if (action.state != ActionState::Running) return;
+
+        if (signature.test(scene->getComponentId<TranslateTracksComponent>())){
+            TranslateTracksComponent& translatetracks = scene->getComponent<TranslateTracksComponent>(entity);
+
+            if (targetSignature.test(scene->getComponentId<Transform>())){
+                Transform& transform = scene->getComponent<Transform>(action.target);
+
+                translateTracksUpdate(keyframe, translatetracks, transform);
+            }
+        }
+
+        if (signature.test(scene->getComponentId<RotateTracksComponent>())){
+            RotateTracksComponent& rotatetracks = scene->getComponent<RotateTracksComponent>(entity);
+
+            if (targetSignature.test(scene->getComponentId<Transform>())){
+                Transform& transform = scene->getComponent<Transform>(action.target);
+
+                rotateTracksUpdate(keyframe, rotatetracks, transform);
+            }
+        }
+
+        if (signature.test(scene->getComponentId<ScaleTracksComponent>())){
+            ScaleTracksComponent& scaletracks = scene->getComponent<ScaleTracksComponent>(entity);
+
+            if (targetSignature.test(scene->getComponentId<Transform>())){
+                Transform& transform = scene->getComponent<Transform>(action.target);
+
+                scaleTracksUpdate(keyframe, scaletracks, transform);
+            }
+        }
+
+        if (signature.test(scene->getComponentId<MorphTracksComponent>())){
+            MorphTracksComponent& morpthtracks = scene->getComponent<MorphTracksComponent>(entity);
+
+            if (targetSignature.test(scene->getComponentId<MeshComponent>())){
+                MeshComponent& mesh = scene->getComponent<MeshComponent>(action.target);
+
+                morphTracksUpdate(keyframe, morpthtracks, mesh);
+            }
+        }
+    }
+
+
+    if (signature.test(scene->getComponentId<TimedActionComponent>())){
+        TimedActionComponent& timedaction = scene->getComponent<TimedActionComponent>(entity);
+
+        timedActionUpdate(dt, entity, action, timedaction);
+        if (action.state != ActionState::Running) return;
+
+        //Transform animation
+        if (targetSignature.test(scene->getComponentId<Transform>())){
+            Transform& transform = scene->getComponent<Transform>(action.target);
+
+            if (signature.test(scene->getComponentId<PositionActionComponent>())){
+                PositionActionComponent& posaction = scene->getComponent<PositionActionComponent>(entity);
+
+                positionActionUpdate(dt, action, timedaction, posaction, transform);
+            }
+
+            if (signature.test(scene->getComponentId<RotationActionComponent>())){
+                RotationActionComponent& rotaction = scene->getComponent<RotationActionComponent>(entity);
+
+                rotationActionUpdate(dt, action, timedaction, rotaction, transform);
+            }
+
+            if (signature.test(scene->getComponentId<ScaleActionComponent>())){
+                ScaleActionComponent& scaleaction = scene->getComponent<ScaleActionComponent>(entity);
+
+                scaleActionUpdate(dt, action, timedaction, scaleaction, transform);
+            }
+        }
+
+        //Color animation
+        if (signature.test(scene->getComponentId<ColorActionComponent>())){
+            ColorActionComponent& coloraction = scene->getComponent<ColorActionComponent>(entity);
+
+            if (targetSignature.test(scene->getComponentId<MeshComponent>())){
+                MeshComponent& mesh = scene->getComponent<MeshComponent>(action.target);
+
+                colorActionMeshUpdate(dt, action, timedaction, coloraction, mesh);
+            }
+            if (targetSignature.test(scene->getComponentId<UIComponent>())){
+                UIComponent& ui = scene->getComponent<UIComponent>(action.target);
+
+                colorActionUIUpdate(dt, action, timedaction, coloraction, ui);
+            }
+        }
+
+        //Alpha animation
+        if (signature.test(scene->getComponentId<AlphaActionComponent>())){
+            AlphaActionComponent& alphaaction = scene->getComponent<AlphaActionComponent>(entity);
+
+            if (targetSignature.test(scene->getComponentId<MeshComponent>())){
+                MeshComponent& mesh = scene->getComponent<MeshComponent>(action.target);
+
+                alphaActionMeshUpdate(dt, action, timedaction, alphaaction, mesh);
+            }
+            if (targetSignature.test(scene->getComponentId<UIComponent>())){
+                UIComponent& ui = scene->getComponent<UIComponent>(action.target);
+
+                alphaActionUIUpdate(dt, action, timedaction, alphaaction, ui);
+            }
+        }
+
+    }
+
+    actionUpdate(dt, action);
+}
+
+void ActionSystem::updateAnimationPreview(double dt, Entity entity){
+    std::unordered_set<Entity> visitedAnimations;
+
+    std::function<void(Entity)> previewAnimation = [&](Entity animationEntity) {
+        Signature signature = scene->getSignature(animationEntity);
+        if (!signature.test(scene->getComponentId<AnimationComponent>()) ||
+            !signature.test(scene->getComponentId<ActionComponent>()) ||
+            !visitedAnimations.insert(animationEntity).second) {
+            return;
+        }
+
+        AnimationComponent& animcomp = scene->getComponent<AnimationComponent>(animationEntity);
+        ActionComponent& action = scene->getComponent<ActionComponent>(animationEntity);
+
+        actionStateChange(animationEntity, action);
+        if (action.state == ActionState::Running){
+            animationUpdate(dt, animationEntity, action, animcomp);
+        }
+
+        for (int i = 0; i < (int)animcomp.actions.size(); i++){
+            Entity childEntity = animcomp.actions[i].action;
+            if (childEntity == NULL_ENTITY || !scene->isEntityCreated(childEntity)) {
+                continue;
+            }
+
+            Signature childSig = scene->getSignature(childEntity);
+            if (!childSig.test(scene->getComponentId<ActionComponent>())) {
+                continue;
+            }
+
+            ActionComponent& childAction = scene->getComponent<ActionComponent>(childEntity);
+            actionStateChange(childEntity, childAction);
+
+            if (childAction.state != ActionState::Running) {
+                continue;
+            }
+
+            if (childSig.test(scene->getComponentId<AnimationComponent>())) {
+                previewAnimation(childEntity);
+            } else {
+                processRunningAction(dt, childEntity, childAction);
+            }
+        }
+
+        if (action.state == ActionState::Running){
+            actionUpdate(dt, action);
+        }
+    };
+
+    previewAnimation(entity);
+}
+
 void ActionSystem::update(double dt){
     if (paused) {
         return;
@@ -992,157 +1199,8 @@ void ActionSystem::update(double dt){
 
         // Action update
         if (action.state == ActionState::Running){
-
             Entity entity = actions->getEntity(i);
-            Signature signature = scene->getSignature(entity);
-            Signature targetSignature;
-            if (action.target != NULL_ENTITY){
-                targetSignature = scene->getSignature(action.target);
-            }
-
-            //Sprite animation
-            if (signature.test(scene->getComponentId<SpriteAnimationComponent>())){
-                SpriteAnimationComponent& spriteanim = scene->getComponent<SpriteAnimationComponent>(entity);
-                if (targetSignature.test(scene->getComponentId<SpriteComponent>()) && targetSignature.test(scene->getComponentId<MeshComponent>())){
-                    SpriteComponent& sprite = scene->getComponent<SpriteComponent>(action.target);
-                    MeshComponent& mesh = scene->getComponent<MeshComponent>(action.target);
-
-                    spriteActionUpdate(dt, entity, action, mesh, sprite, spriteanim);
-                    if (action.state != ActionState::Running) continue;
-                }
-            }
-
-            //Particles
-            if (signature.test(scene->getComponentId<ParticlesComponent>())){
-                ParticlesComponent& particles = scene->getComponent<ParticlesComponent>(entity);
-
-                if (targetSignature.test(scene->getComponentId<InstancedMeshComponent>())){
-                    InstancedMeshComponent& instmesh = scene->getComponent<InstancedMeshComponent>(action.target);
-
-                    particlesActionUpdate(dt, entity, action.target, action, particles, instmesh);
-                    if (action.state != ActionState::Running) continue;
-                }
-                if (targetSignature.test(scene->getComponentId<PointsComponent>())){
-                    PointsComponent& points = scene->getComponent<PointsComponent>(action.target);
-
-                    particlesActionUpdate(dt, entity, action.target, action, particles, points);
-                    if (action.state != ActionState::Running) continue;
-                }
-            }
-
-            //keyframe animation
-            if (signature.test(scene->getComponentId<KeyframeTracksComponent>())){
-                KeyframeTracksComponent& keyframe = scene->getComponent<KeyframeTracksComponent>(entity);
-
-                keyframeUpdate(dt, action, keyframe);
-                if (action.state != ActionState::Running) continue;
-
-                if (signature.test(scene->getComponentId<TranslateTracksComponent>())){
-                    TranslateTracksComponent& translatetracks = scene->getComponent<TranslateTracksComponent>(entity);
-
-                    if (targetSignature.test(scene->getComponentId<Transform>())){
-                        Transform& transform = scene->getComponent<Transform>(action.target);
-
-                        translateTracksUpdate(keyframe, translatetracks, transform);
-                    }
-                }
-
-                if (signature.test(scene->getComponentId<RotateTracksComponent>())){
-                    RotateTracksComponent& rotatetracks = scene->getComponent<RotateTracksComponent>(entity);
-
-                    if (targetSignature.test(scene->getComponentId<Transform>())){
-                        Transform& transform = scene->getComponent<Transform>(action.target);
-
-                        rotateTracksUpdate(keyframe, rotatetracks, transform);
-                    }
-                }
-
-                if (signature.test(scene->getComponentId<ScaleTracksComponent>())){
-                    ScaleTracksComponent& scaletracks = scene->getComponent<ScaleTracksComponent>(entity);
-
-                    if (targetSignature.test(scene->getComponentId<Transform>())){
-                        Transform& transform = scene->getComponent<Transform>(action.target);
-
-                        scaleTracksUpdate(keyframe, scaletracks, transform);
-                    }
-                }
-
-                if (signature.test(scene->getComponentId<MorphTracksComponent>())){
-                    MorphTracksComponent& morpthtracks = scene->getComponent<MorphTracksComponent>(entity);
-
-                    if (targetSignature.test(scene->getComponentId<MeshComponent>())){
-                        MeshComponent& mesh = scene->getComponent<MeshComponent>(action.target);
-
-                        morphTracksUpdate(keyframe, morpthtracks, mesh);
-                    }
-                }
-            }
-
-
-            if (signature.test(scene->getComponentId<TimedActionComponent>())){
-                TimedActionComponent& timedaction = scene->getComponent<TimedActionComponent>(entity);
-
-                timedActionUpdate(dt, entity, action, timedaction);
-                if (action.state != ActionState::Running) continue;
-
-                //Transform animation
-                if (targetSignature.test(scene->getComponentId<Transform>())){
-                    Transform& transform = scene->getComponent<Transform>(action.target);
-
-                    if (signature.test(scene->getComponentId<PositionActionComponent>())){
-                        PositionActionComponent& posaction = scene->getComponent<PositionActionComponent>(entity);
-
-                        positionActionUpdate(dt, action, timedaction, posaction, transform);
-                    }
-
-                    if (signature.test(scene->getComponentId<RotationActionComponent>())){
-                        RotationActionComponent& rotaction = scene->getComponent<RotationActionComponent>(entity);
-
-                        rotationActionUpdate(dt, action, timedaction, rotaction, transform);
-                    }
-
-                    if (signature.test(scene->getComponentId<ScaleActionComponent>())){
-                        ScaleActionComponent& scaleaction = scene->getComponent<ScaleActionComponent>(entity);
-
-                        scaleActionUpdate(dt, action, timedaction, scaleaction, transform);
-                    }
-                }
-
-                //Color animation
-                if (signature.test(scene->getComponentId<ColorActionComponent>())){
-                    ColorActionComponent& coloraction = scene->getComponent<ColorActionComponent>(entity);
-
-                    if (targetSignature.test(scene->getComponentId<MeshComponent>())){
-                        MeshComponent& mesh = scene->getComponent<MeshComponent>(action.target);
-
-                        colorActionMeshUpdate(dt, action, timedaction, coloraction, mesh);
-                    }
-                    if (targetSignature.test(scene->getComponentId<UIComponent>())){
-                        UIComponent& ui = scene->getComponent<UIComponent>(action.target);
-
-                        colorActionUIUpdate(dt, action, timedaction, coloraction, ui);
-                    }
-                }
-
-                //Alpha animation
-                if (signature.test(scene->getComponentId<AlphaActionComponent>())){
-                    AlphaActionComponent& alphaaction = scene->getComponent<AlphaActionComponent>(entity);
-
-                    if (targetSignature.test(scene->getComponentId<MeshComponent>())){
-                        MeshComponent& mesh = scene->getComponent<MeshComponent>(action.target);
-
-                        alphaActionMeshUpdate(dt, action, timedaction, alphaaction, mesh);
-                    }
-                    if (targetSignature.test(scene->getComponentId<UIComponent>())){
-                        UIComponent& ui = scene->getComponent<UIComponent>(action.target);
-
-                        alphaActionUIUpdate(dt, action, timedaction, alphaaction, ui);
-                    }
-                }
-
-            }
-
-            actionUpdate(dt, action);
+            processRunningAction(dt, entity, action);
         }
 
 	}
