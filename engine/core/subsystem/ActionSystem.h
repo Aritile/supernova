@@ -108,6 +108,7 @@ namespace Supernova{
 		void actionPause(Entity entity);
 
 		void updateAnimationPreview(double dt, Entity entity);
+		void updateActionPreview(double dt, Entity entity);
 	
 		void load() override;
 		void draw() override;

@@ -1006,6 +1006,12 @@ void ActionSystem::processRunningAction(double dt, Entity entity, ActionComponen
         keyframeUpdate(dt, action, keyframe);
         if (action.state != ActionState::Running) return;
 
+        // Stop when past the last keyframe time
+        if (!keyframe.times.empty() && action.timecount >= keyframe.times.back()) {
+            keyframe.interpolation = 1;
+            keyframe.index = keyframe.times.size() - 1;
+        }
+
         if (signature.test(scene->getComponentId<TranslateTracksComponent>())){
             TranslateTracksComponent& translatetracks = scene->getComponent<TranslateTracksComponent>(entity);
 
@@ -1044,6 +1050,12 @@ void ActionSystem::processRunningAction(double dt, Entity entity, ActionComponen
 
                 morphTracksUpdate(keyframe, morpthtracks, mesh);
             }
+        }
+
+        // Stop after applying final values
+        if (!keyframe.times.empty() && action.timecount >= keyframe.times.back()) {
+            actionStop(entity);
+            return;
         }
     }
 
@@ -1164,6 +1176,27 @@ void ActionSystem::updateAnimationPreview(double dt, Entity entity){
     };
 
     previewAnimation(entity);
+}
+
+void ActionSystem::updateActionPreview(double dt, Entity entity){
+    if (!scene->isEntityCreated(entity)) return;
+
+    Signature signature = scene->getSignature(entity);
+    if (!signature.test(scene->getComponentId<ActionComponent>())) return;
+
+    // Animation entities need the full animation preview path
+    if (signature.test(scene->getComponentId<AnimationComponent>())) {
+        updateAnimationPreview(dt, entity);
+        return;
+    }
+
+    ActionComponent& action = scene->getComponent<ActionComponent>(entity);
+
+    actionStateChange(entity, action);
+
+    if (action.state == ActionState::Running){
+        processRunningAction(dt, entity, action);
+    }
 }
 
 void ActionSystem::update(double dt){
